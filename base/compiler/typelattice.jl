@@ -54,6 +54,14 @@ struct PartialTypeVar
     PartialTypeVar(tv::TypeVar, lb_certain::Bool, ub_certain::Bool) = new(tv, lb_certain, ub_certain)
 end
 
+mutable struct PartialOpaque
+    t::Type
+    env_ts::Vector{Any}
+    parent::MethodInstance
+    isva::Bool
+    source::Method
+end
+
 # Wraps a type and represents that the value may also be undef at this point.
 # (only used in optimize, not abstractinterpret)
 # N.B. in the lattice, this is epsilon bigger than `typ` (even Any)
@@ -185,6 +193,14 @@ function ⊑(@nospecialize(a), @nospecialize(b))
         end
         return false
     end
+    if isa(a, PartialOpaque)
+        if isa(b, PartialOpaque)
+            (a.parent === b.parent && a.source === b.source) || return false
+            return (widenconst(a) <: widenconst(b)) &&
+                ⊑(a.env, b.env)
+        end
+        return widenconst(a) <: widenconst(b)
+    end
     if isa(a, Const)
         if isa(b, Const)
             return a.val === b.val
@@ -240,6 +256,7 @@ end
 widenconst(m::MaybeUndef) = widenconst(m.typ)
 widenconst(c::PartialTypeVar) = TypeVar
 widenconst(t::PartialStruct) = t.typ
+widenconst(t::PartialOpaque) = t.t
 widenconst(t::Type) = t
 widenconst(t::TypeVar) = t
 widenconst(t::Core.TypeofVararg) = t
